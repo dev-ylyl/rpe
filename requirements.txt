@@ -1,0 +1,9 @@
+fastapi
+uvicorn
+torch>=2.0
+transformers
+onnxruntime-gpu
+rembg
+Pillow
+numpy
+requests
