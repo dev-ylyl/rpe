@@ -2,8 +2,7 @@ fastapi
 uvicorn
 torch>=2.0
 transformers
-onnxruntime-gpu
-rembg
+rembg[gpu]
 Pillow
 numpy
 requests
