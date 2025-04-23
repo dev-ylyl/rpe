@@ -2,7 +2,7 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from typing import List, Union
 import torch
-from transformers import AutoTokenizer, AutoModel, AutoProcessor
+from transformers import TextEmbeddingInferenceModel, AutoProcessor, AutoModel
 from rembg import remove
 from PIL import Image
 import base64
@@ -13,19 +13,12 @@ import numpy as np
 app = FastAPI()
 
 # --- TEXT EMBEDDING SETUP ---
-text_model_name = "BAAI/bge-large-zh-v1.5"
-text_tokenizer = AutoTokenizer.from_pretrained(text_model_name)
-text_model = AutoModel.from_pretrained(text_model_name).cuda()
-text_model.eval()
+text_model = TextEmbeddingInferenceModel.from_pretrained(
+    "BAAI/bge-large-zh-v1.5", trust_remote_code=True
+)
 
 def get_text_embedding(texts: List[str]) -> List[List[float]]:
-    inputs = text_tokenizer(texts, return_tensors="pt", padding=True, truncation=True)
-    inputs = {k: v.cuda() for k, v in inputs.items()}
-    with torch.no_grad():
-        outputs = text_model(**inputs)
-        embeddings = outputs.last_hidden_state[:, 0]
-        embeddings = torch.nn.functional.normalize(embeddings, dim=-1)
-    return embeddings.cpu().tolist()
+    return text_model(texts)
 
 # --- IMAGE EMBEDDING SETUP ---
 image_model_name = "Marqo/marqo-fashionCLIP"
