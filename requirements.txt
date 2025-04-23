@@ -1,7 +1,7 @@
 fastapi
 uvicorn
 torch>=2.0
-transformers
+transformers>=4.38.0
 rembg[gpu]
 Pillow
 numpy
