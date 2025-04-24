@@ -14,16 +14,12 @@ ENV HF_HOME=/runpod-volume \
     U2NET_HOME=/runpod-volume/rembg \
     PIP_NO_CACHE_DIR=1
 
-# 安装Python依赖
+# 安装Python依赖（单步完成）
 COPY requirements.txt .
 RUN pip install --upgrade pip && \
-    pip install -r requirements.txt && \
-    pip uninstall torch -y && \
-    CUDA_VERSION_SHORT=$(echo ${WORKER_CUDA_VERSION} | cut -d. -f1,2 | tr -d .) && \
-    pip install torch==2.1.0+cu${CUDA_VERSION_SHORT} \
-    --index-url https://download.pytorch.org/whl/cu${CUDA_VERSION_SHORT}
+    pip install -r requirements.txt --no-cache-dir
 
-# 预下载模型（修正后的多行命令写法）
+# 预下载模型
 RUN python -c "\
 from transformers import AutoModel; \
 AutoModel.from_pretrained('BAAI/bge-large-zh-v1.5'); \
