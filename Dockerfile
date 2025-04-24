@@ -25,7 +25,8 @@ RUN python3.11 -m pip install --upgrade pip && \
 RUN pip uninstall torch -y && \
     pip install torch torchvision torchaudio \
         --index-url https://download.pytorch.org/whl/cu126 \
-        --no-cache-dir
+        --no-cache-dir && \
+    pip install hf_transfer
 
 # 预下载 transformers 模型（容错3次）
 COPY scripts/preload_models.py ./preload_models.py
