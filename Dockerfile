@@ -28,18 +28,8 @@ RUN pip uninstall torch -y && \
         --no-cache-dir
 
 # 预下载 transformers 模型（容错3次）
-RUN python3.11 -c "\
-import os; \
-os.environ['HF_HUB_OFFLINE'] = '0'; \
-from transformers import AutoModel; \
-for attempt in range(3): \
-    try: \
-        AutoModel.from_pretrained('BAAI/bge-large-zh-v1.5', local_files_only=attempt>0); \
-        AutoModel.from_pretrained('Marqo/marqo-fashionCLIP', local_files_only=attempt>0); \
-        break; \
-    except Exception as e: \
-        print(f'模型下载尝试 {attempt+1} 失败: {str(e)}'); \
-        if attempt == 2: raise"
+COPY scripts/preload_models.py ./preload_models.py
+RUN python3.11 preload_models.py
 
 # 下载 rembg 模型（双版本）
 RUN mkdir -p /runpod-volume/rembg && \
