@@ -1,8 +1,9 @@
-fastapi==0.109.1
-uvicorn==0.27.0
+fastapi
+uvicorn
+transformers==4.29.2
 torch==2.7.0
-transformers==4.39.3
-rembg[gpu]==2.0.56
-Pillow==10.2.0
-numpy<2
-requests
+hf_transfer
+open_clip_torch
+rembg
+pillow
+httpx
