@@ -1,8 +1,7 @@
-fastapi
-uvicorn
-torch>=2.0
-transformers>=4.38.0
-rembg[gpu]
-Pillow
-numpy
-requests
+fastapi==0.109.1
+uvicorn==0.27.0
+torch==2.1.0
+transformers==4.39.3
+rembg[gpu]==2.0.56
+Pillow==10.2.0
+numpy==1.26.4

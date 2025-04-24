@@ -1,78 +1,122 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 from pydantic import BaseModel
-from typing import List, Union
 import torch
-from transformers import TextEmbeddingInferenceModel, AutoProcessor, AutoModel
-from rembg import remove
+from transformers import AutoModel
+from rembg import remove, new_session
 from PIL import Image
 import base64
 import io
-import requests
 import numpy as np
+from contextlib import asynccontextmanager
+import logging
+
+# 配置日志直接输出到控制台
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[logging.StreamHandler()]
+)
 
 app = FastAPI()
 
-# --- TEXT EMBEDDING SETUP ---
-text_model = TextEmbeddingInferenceModel.from_pretrained(
-    "BAAI/bge-large-zh-v1.5", trust_remote_code=True
-)
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """冷启动优化：预加载模型并显示显存占用"""
+    logging.info("🚀 初始化模型中...")
+    
+    # 文本模型（BAAI）
+    app.state.text_model = AutoModel.from_pretrained(
+        "BAAI/bge-large-zh-v1.5",
+        trust_remote_code=True
+    ).cuda().eval()
+    
+    # 图像模型（Marqo）
+    app.state.image_model = AutoModel.from_pretrained(
+        "Marqo/marqo-fashionCLIP",
+        trust_remote_code=True
+    ).cuda().eval()
+    
+    # Rembg会话
+    app.state.rembg_session = new_session("isnet-general-use")
+    
+    logging.info(f"✅ 初始化完成 | 显存占用: {torch.cuda.memory_allocated()/1024**2:.2f}MB")
+    yield
+    
+    # 清理GPU内存
+    torch.cuda.empty_cache()
 
-def get_text_embedding(texts: List[str]) -> List[List[float]]:
-    return text_model(texts)
+app = FastAPI(lifespan=lifespan)
 
-# --- IMAGE EMBEDDING SETUP ---
-image_model_name = "Marqo/marqo-fashionCLIP"
-image_model = AutoModel.from_pretrained(image_model_name, trust_remote_code=True).cuda()
-image_processor = AutoProcessor.from_pretrained(image_model_name, trust_remote_code=True)
-image_model.eval()
+class Request(BaseModel):
+    input: str | List[str]  # 支持OpenAI格式的字符串或数组
+    model: str = "text-embedding"  # 可选 "text-embedding" 或 "image-embedding"
+    user: str = None  # 兼容OpenAI字段
 
-def remove_background(img: Image.Image) -> Image.Image:
-    img = img.convert("RGBA")
-    output = remove(img)
-    return output.convert("RGB")
-
-def get_image_embedding(image_b64: str) -> List[float]:
-    header, encoded = image_b64.split(",", 1)
-    image_data = base64.b64decode(encoded)
-    image = Image.open(io.BytesIO(image_data))
-    image = remove_background(image)
-    processed = image_processor(images=image, return_tensors="pt")
-    pixel_values = processed["pixel_values"].cuda()
-    with torch.no_grad():
-        embedding = image_model.get_image_features(pixel_values=pixel_values, normalize=True)
-    return embedding.squeeze().cpu().tolist()
-
-# --- OpenAI API-compatible interface ---
-class EmbeddingRequest(BaseModel):
-    model: str
-    input: Union[str, List[str]]
+def process_image(image_b64: str, session) -> Image.Image:
+    """Base64图像处理流水线"""
+    try:
+        # 兼容纯Base64和DataURL格式
+        if image_b64.startswith('data:image/'):
+            image_b64 = image_b64.split(",")[1]
+        img = Image.open(io.BytesIO(base64.b64decode(image_b64)))
+        return remove(img, session=session).convert("RGB")
+    except Exception as e:
+        logging.error(f"图像处理失败: {str(e)}")
+        raise
 
 @app.post("/v1/embeddings")
-def create_embedding(req: EmbeddingRequest):
-    if isinstance(req.input, str):
-        inputs = [req.input]
-    else:
-        inputs = req.input
-
-    if req.model == "text":
-        embeddings = get_text_embedding(inputs)
-    elif req.model == "image":
-        embeddings = [get_image_embedding(img) for img in inputs]
-    else:
-        raise HTTPException(status_code=400, detail="Model must be 'text' or 'image'")
-
-    return {
-        "object": "list",
-        "data": [
-            {
+async def create_embedding(request: Request):
+    """OpenAI兼容的嵌入端点"""
+    try:
+        inputs = [request.input] if isinstance(request.input, str) else request.input
+        
+        # 文本处理
+        if request.model == "text-embedding":
+            logging.info(f"📝 处理文本输入（长度: {len(inputs[0])}）")
+            with torch.no_grad():
+                tokenized = app.state.text_model.tokenize(inputs)
+                embeddings = app.state.text_model(**tokenized).last_hidden_state.mean(dim=1).tolist()
+        
+        # 图像处理
+        elif request.model == "image-embedding":
+            logging.info(f"🖼️ 处理图像输入（数量: {len(inputs)}）")
+            embeddings = []
+            for img_str in inputs:
+                img = process_image(img_str, app.state.rembg_session)
+                with torch.no_grad():
+                    # 极简归一化 (替代processor)
+                    img_tensor = torch.tensor(np.array(img)).permute(2,0,1).unsqueeze(0).float().cuda()
+                    img_tensor = (img_tensor - 127.5) / 127.5
+                    embedding = app.state.image_model(img_tensor)[0].tolist()
+                    embeddings.append(embedding)
+        
+        # 构建OpenAI格式响应
+        return {
+            "object": "list",
+            "data": [{
                 "object": "embedding",
                 "index": i,
                 "embedding": emb
-            } for i, emb in enumerate(embeddings)
-        ],
-        "model": req.model,
-        "usage": {
-            "prompt_tokens": len(inputs),
-            "total_tokens": len(inputs)
+            } for i, emb in enumerate(embeddings)],
+            "model": request.model,
+            "usage": {
+                "prompt_tokens": len(inputs),
+                "total_tokens": len(inputs)
+            }
         }
+    except Exception as e:
+        logging.error(f"❌ 请求处理失败: {str(e)}")
+        return {
+            "error": {
+                "message": str(e),
+                "type": "invalid_request_error"
+            }
+        }
+
+@app.get("/health")
+async def health_check():
+    return {
+        "status": "healthy",
+        "gpu_available": torch.cuda.is_available(),
+        "memory_used": f"{torch.cuda.memory_allocated()/1024**2:.2f}MB"
     }
