@@ -26,7 +26,7 @@ RUN pip uninstall torch -y && \
     pip install torch torchvision torchaudio \
         --index-url https://download.pytorch.org/whl/cu126 \
         --no-cache-dir && \
-    pip install hf_transfer
+    pip install hf_transfer open_clip_torch
 
 # 预下载 transformers 模型（容错3次）
 COPY scripts/preload_models.py ./preload_models.py
