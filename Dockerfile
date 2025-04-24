@@ -4,13 +4,10 @@ FROM runpod/base:0.6.2-cuda${WORKER_CUDA_VERSION}
 ARG WORKER_CUDA_VERSION=12.6.2
 
 # 安装基础依赖
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends \
-    git \
-    libgl1 \
-    libglib2.0-0 \
-    wget \
-    && rm -rf /var/lib/apt/lists/*
+RUN apt-get update -o Acquire::Retries=5 && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+    git libgl1 libglib2.0-0 wget && \
+    rm -rf /var/lib/apt/lists/*
 
 # 设置环境变量
 ENV HF_HOME=/runpod-volume \
