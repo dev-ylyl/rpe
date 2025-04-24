@@ -17,7 +17,9 @@ ENV HF_HOME=/runpod-volume \
 # 安装Python依赖（单步完成）
 COPY requirements.txt .
 RUN pip install --upgrade pip && \
-    pip install -r requirements.txt --no-cache-dir
+    pip install -r requirements.txt --no-cache-dir && \
+    pip uninstall torch -y && \
+    pip install torch==2.1.0 --index-url https://download.pytorch.org/whl/cu118
 
 # 预下载模型
 RUN python -c "\
