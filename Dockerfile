@@ -27,9 +27,9 @@ RUN mkdir -p /runpod-volume/rembg && \
 COPY scripts/preload_models.py /app/scripts/preload_models.py
 RUN python3.11 /app/scripts/preload_models.py
 
-# 复制代码并设置工作目录
-COPY app /app
+# 拷贝所有代码
+COPY . /app
 WORKDIR /app
 
-# 启动 FastAPI 服务
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+# 启动 RunPod Worker
+CMD ["python3.11", "-u", "handler.py"]

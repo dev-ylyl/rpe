@@ -1,9 +1,7 @@
-fastapi
-uvicorn
+runpod==1.7.7
 transformers==4.29.2
 torch==2.7.0
 hf_transfer
 open_clip_torch
 rembg
 pillow
-httpx
