@@ -6,7 +6,7 @@ os.environ["HF_HUB_OFFLINE"] = "0"
 
 def load(model_name):
     print(f"📦 正在预加载: {model_name}")
-    AutoModel.from_pretrained(model_name, trust_remote_code=True)
+    AutoModel.from_pretrained(model_name, trust_remote_code=True, cache_dir="/runpod-volume/hub")
     print(f"✅ 预加载完成: {model_name}")
 
 if __name__ == "__main__":
