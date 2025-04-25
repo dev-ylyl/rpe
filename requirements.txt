@@ -5,3 +5,4 @@ hf_transfer
 open_clip_torch
 rembg
 pillow
+onnxruntime-gpu
