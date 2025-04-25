@@ -22,14 +22,26 @@ def handler(job):
     if isinstance(inputs, str):
         inputs = [inputs]
 
+    if not inputs:
+        return {
+            "error": "Empty input provided.",
+            "model": model_type
+        }
+
+    results = []
+
     if model_type == "text-embedding":
-        encoded = tokenizer(inputs, return_tensors="pt", padding=True, truncation=True).to("cuda")
+        encoded = tokenizer(text=inputs, return_tensors="pt", padding=True, truncation=True).to("cuda")
         with torch.no_grad():
             output = text_model(**encoded).last_hidden_state.mean(dim=1).cpu().tolist()
-        return [{"object": "embedding", "index": i, "embedding": emb} for i, emb in enumerate(output)]
+        for i, emb in enumerate(output):
+            results.append({
+                "object": "embedding",
+                "index": i,
+                "embedding": emb
+            })
 
     elif model_type == "image-embedding":
-        results = []
         for i, img_str in enumerate(inputs):
             if img_str.startswith("data:image/"):
                 img_str = img_str.split(",")[1]
@@ -38,7 +50,20 @@ def handler(job):
             processed = image_processor(images=image, return_tensors="pt").to("cuda")
             with torch.no_grad():
                 vector = image_model.get_image_features(**processed, normalize=True).squeeze().cpu().tolist()
-            results.append({"object": "embedding", "index": i, "embedding": vector})
-        return results
+            results.append({
+                "object": "embedding",
+                "index": i,
+                "embedding": vector
+            })
+
+    return {
+        "object": "list",
+        "data": results,
+        "model": model_type,
+        "usage": {
+            "prompt_tokens": len(inputs),
+            "total_tokens": len(inputs)
+        }
+    }
 
 runpod.serverless.start({"handler": handler})
