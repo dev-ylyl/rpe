@@ -18,10 +18,10 @@ RUN python3.11 -m pip install --upgrade pip && \
     python3.11 -m pip install -r /requirements.txt --no-cache-dir && \
     rm /requirements.txt
 
-# # ✅ 下载 rembg ONNX 模型（提前缓存，避免冷启动时联网）
-# RUN mkdir -p /runpod-volume/rembg && \
-#     wget -O /runpod-volume/rembg/u2net.onnx https://huggingface.co/ckpt/rembg/resolve/main/u2net.onnx && \
-#     wget -O /runpod-volume/rembg/isnet-general-use.onnx https://huggingface.co/ckpt/rembg/resolve/main/isnet-general-use.onnx
+# ✅ 下载 rembg ONNX 模型（提前缓存，避免冷启动时联网）
+RUN mkdir -p /runpod-volume/rembg && \
+    wget -O /runpod-volume/rembg/u2net.onnx https://huggingface.co/tomjackson2023/rembg/resolve/main/u2net.onnx && \
+    wget -O /runpod-volume/rembg/isnet-general-use.onnx https://huggingface.co/martintomov/comfy/resolve/8505d94ccac0a7a3dd6e779e0db27ab37ee7004a/rembg/isnet-general-use.onnx
 
 # ✅ 构建时预加载模型（使用多进程）
 COPY scripts/preload_models.py /app/scripts/preload_models.py
