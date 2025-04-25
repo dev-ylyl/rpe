@@ -8,10 +8,35 @@ import logging
 
 logging.basicConfig(level=logging.INFO)
 
-# 模型加载
+from huggingface_hub import snapshot_download
+import os
+
+try:
+    tokenizer_snapshot = snapshot_download("BAAI/bge-large-zh-v1.5", cache_dir="/runpod-volume/hub", local_files_only=True)
+    logging.info(f"✅ tokenizer 缓存命中路径: {tokenizer_snapshot}")
+except Exception:
+    logging.warning("⚠️ tokenizer 未命中缓存，将使用在线加载（可能触发网络请求）")
 tokenizer = AutoTokenizer.from_pretrained("BAAI/bge-large-zh-v1.5", trust_remote_code=True, cache_dir="/runpod-volume/hub")
+
+try:
+    text_model_snapshot = snapshot_download("BAAI/bge-large-zh-v1.5", cache_dir="/runpod-volume/hub", local_files_only=True)
+    logging.info(f"✅ text_model 缓存命中路径: {text_model_snapshot}")
+except Exception:
+    logging.warning("⚠️ text_model 未命中缓存，将使用在线加载（可能触发网络请求）")
 text_model = AutoModel.from_pretrained("BAAI/bge-large-zh-v1.5", trust_remote_code=True, cache_dir="/runpod-volume/hub").cuda().eval()
+
+try:
+    image_model_snapshot = snapshot_download("Marqo/marqo-fashionCLIP", cache_dir="/runpod-volume/hub", local_files_only=True)
+    logging.info(f"✅ image_model 缓存命中路径: {image_model_snapshot}")
+except Exception:
+    logging.warning("⚠️ image_model 未命中缓存，将使用在线加载（可能触发网络请求）")
 image_model = AutoModel.from_pretrained("Marqo/marqo-fashionCLIP", trust_remote_code=True, cache_dir="/runpod-volume/hub").cuda().eval()
+
+try:
+    image_processor_snapshot = snapshot_download("Marqo/marqo-fashionCLIP", cache_dir="/runpod-volume/hub", local_files_only=True)
+    logging.info(f"✅ image_processor 缓存命中路径: {image_processor_snapshot}")
+except Exception:
+    logging.warning("⚠️ image_processor 未命中缓存，将使用在线加载（可能触发网络请求）")
 image_processor = AutoProcessor.from_pretrained("Marqo/marqo-fashionCLIP", trust_remote_code=True, cache_dir="/runpod-volume/hub")
 rembg_session = new_session("isnet-general-use")
 
@@ -20,9 +45,9 @@ import traceback
 def handler(job):
     logging.info(f"📥 接收到任务: {job}")
     try:
-        body = job["input"]
-        model_type = body.get("model", "text-embedding")
-        inputs = body.get("input")
+        openai_input = job["input"].get("openai_input", {})
+        model_type = openai_input.get("model", "text-embedding")
+        inputs = openai_input.get("input")
         if isinstance(inputs, str):
             inputs = [inputs]
 
