@@ -1,5 +1,5 @@
 import runpod
-from transformers import AutoTokenizer, AutoModel, AutoProcessor
+from transformers import AutoTokenizer, AutoModel
 from rembg import remove, new_session
 from PIL import Image
 import torch
@@ -8,6 +8,7 @@ import io
 import logging
 import traceback
 import time
+import open_clip
 
 # 配置日志
 logging.basicConfig(
@@ -28,17 +29,11 @@ text_model = AutoModel.from_pretrained(
     local_files_only=True
 ).cuda().eval()
 
-image_model = AutoModel.from_pretrained(
-    "/runpod-volume/hub/models--Marqo--marqo-fashionCLIP",
-    trust_remote_code=True,
-    local_files_only=True
-).cuda().eval()
-
-image_processor = AutoProcessor.from_pretrained(
-    "/runpod-volume/hub/models--Marqo--marqo-fashionCLIP",
-    trust_remote_code=True,
-    local_files_only=True
+image_model, preprocess_train, preprocess_val = open_clip.create_model_and_transforms(
+    'hf-hub:Marqo/marqo-fashionCLIP'
 )
+image_model = image_model.cuda().eval()
+image_processor = preprocess_val
 
 print(f"image_processor 类型: {type(image_processor)}")
 print(f"image_processor.config: {getattr(image_processor, 'config', None)}")
@@ -58,9 +53,8 @@ logging.info("✅ 文本模型 warmup 完成")
 # CUDA 预热 - image_model
 with torch.no_grad():
     dummy_image = Image.new('RGB', (224, 224), color=(255, 255, 255))  # 创建一张白图
-    processed = image_processor(images=dummy_image, return_tensors="pt")
-    processed = {k: v.cuda() for k, v in processed.items()}
-    _ = image_model.get_image_features(**processed, normalize=True)
+    tensor_image = image_processor(dummy_image).unsqueeze(0).cuda()
+    _ = image_model.encode_image(tensor_image, normalize=True)
 logging.info("✅ 图片模型 warmup 完成")
 
 # ✅ 核心处理函数
@@ -133,7 +127,7 @@ def handler(job):
 
             # 批量处理
             try:
-                processed = image_processor(images=images, return_tensors="pt")
+                processed_images = torch.stack([image_processor(img) for img in images]).cuda()
             except Exception as e:
                 logging.error(f"❌ 图片处理出错: {str(e)}")
                 traceback.print_exc()
@@ -148,10 +142,8 @@ def handler(job):
             processor_time = time.time()
             logging.info(f"🎛️ 图片批处理耗时: {processor_time - rembg_time:.3f}s")
 
-            processed = {k: v.cuda() for k, v in processed.items()}
-
             with torch.no_grad():
-                vectors = image_model.get_image_features(**processed, normalize=True).cpu().tolist()
+                vectors = image_model.encode_image(processed_images, normalize=True).cpu().tolist()
 
             inference_time = time.time()
             logging.info(f"⏱️ 图片推理耗时: {inference_time - processor_time:.3f}s")
