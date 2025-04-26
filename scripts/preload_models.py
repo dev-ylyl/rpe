@@ -1,22 +1,28 @@
 from multiprocessing import Process
-from transformers import AutoModel
+from huggingface_hub import snapshot_download
 import os
 
 os.environ["HF_HUB_OFFLINE"] = "0"
 
-def load(model_name):
-    print(f"📦 正在预加载: {model_name}")
-    AutoModel.from_pretrained(model_name, trust_remote_code=True, cache_dir="/runpod-volume/hub")
-    print(f"✅ 预加载完成: {model_name}")
+def download(model_id):
+    print(f"📦 正在下载模型: {model_id}")
+    snapshot_download(
+        repo_id=model_id,
+        local_dir=f"/runpod-volume/hub/models--{model_id.replace('/', '--')}",
+        local_dir_use_symlinks=False,
+        resume_download=True
+    )
+    print(f"✅ 下载完成: {model_id}")
 
 if __name__ == "__main__":
     models = [
         "BAAI/bge-large-zh-v1.5",
         "Marqo/marqo-fashionCLIP"
     ]
-    processes = [Process(target=load, args=(name,)) for name in models]
+    processes = [Process(target=download, args=(model,)) for model in models]
     for p in processes:
         p.start()
     for p in processes:
         p.join()
-    print("🚀 所有模型预加载完成")
+
+    print("🚀 所有模型已完成预下载")

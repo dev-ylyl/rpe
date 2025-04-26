@@ -3,12 +3,19 @@ from rp_response import runpod_response
 from transformers import AutoTokenizer, AutoModel, AutoProcessor
 from rembg import remove, new_session
 from PIL import Image
-import torch, base64, io
-import numpy as np
+import torch
+import base64
+import io
 import logging
+import traceback
 
-logging.basicConfig(level=logging.INFO)
+# 配置日志
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s"
+)
 
+# ✅ 加载模型（全部从本地路径，强制不联网）
 tokenizer = AutoTokenizer.from_pretrained(
     "/runpod-volume/hub/models--BAAI--bge-large-zh-v1.5",
     trust_remote_code=True,
@@ -32,10 +39,10 @@ image_processor = AutoProcessor.from_pretrained(
     trust_remote_code=True,
     local_files_only=True
 )
+
 rembg_session = new_session("isnet-general-use")
 
-import traceback
-
+# ✅ 核心处理函数
 def handler(job):
     logging.info(f"📥 接收到任务: {job}")
     try:
@@ -47,17 +54,16 @@ def handler(job):
 
         if not inputs:
             logging.warning("⚠️ 输入为空")
-            result = {
-                "error": "Empty input provided.",
-                "model": model_type
-            }
-            logging.info(f"✅ 返回结果: {result}")
-            return result
+            return runpod_response(
+                status_code=400,
+                content_type="application/json",
+                body={"error": "Empty input provided.", "model": model_type}
+            )
 
         results = []
 
         if model_type == "text-embedding":
-            logging.info(f"🔠 处理文本嵌入，输入数量: {len(inputs)}")
+            logging.info(f"🔠 文本嵌入处理，数量: {len(inputs)}")
             encoded = tokenizer(text=inputs, return_tensors="pt", padding=True, truncation=True).to("cuda")
             with torch.no_grad():
                 output = text_model(**encoded).last_hidden_state.mean(dim=1).cpu().tolist()
@@ -69,7 +75,7 @@ def handler(job):
                 })
 
         elif model_type == "image-embedding":
-            logging.info(f"🖼️ 处理图像嵌入，图片数量: {len(inputs)}")
+            logging.info(f"🖼️ 图像嵌入处理，数量: {len(inputs)}")
             for i, img_str in enumerate(inputs):
                 if img_str.startswith("data:image/"):
                     img_str = img_str.split(",")[1]
@@ -84,21 +90,18 @@ def handler(job):
                     "embedding": vector
                 })
 
-        result = {
-            "object": "list",
-            "data": results,
-            "model": model_type,
-            "usage": {
-                "prompt_tokens": len(inputs),
-                "total_tokens": len(inputs)
-            }
-        }
-        logging.info(f"✅ 返回结果: {result}")
-        logging.info("🚀 任务处理完成，无异常抛出，正常返回结果。")
         return runpod_response(
             status_code=200,
-            content_type="application/json; charset=utf-8",
-            body=result
+            content_type="application/json",
+            body={
+                "object": "list",
+                "data": results,
+                "model": model_type,
+                "usage": {
+                    "prompt_tokens": len(inputs),
+                    "total_tokens": len(inputs)
+                }
+            }
         )
 
     except Exception as e:
@@ -106,12 +109,13 @@ def handler(job):
         traceback.print_exc()
         return runpod_response(
             status_code=500,
-            content_type="application/json; charset=utf-8",
+            content_type="application/json",
             body={
                 "error": str(e),
                 "trace": traceback.format_exc()
             }
         )
 
+# ✅ 启动 Serverless Worker
 logging.info("🟢 Worker 已启动，等待任务中...")
 runpod.serverless.start({"handler": handler})

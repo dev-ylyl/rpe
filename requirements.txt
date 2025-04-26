@@ -6,3 +6,4 @@ open_clip_torch
 rembg
 pillow
 onnxruntime-gpu
+huggingface_hub
