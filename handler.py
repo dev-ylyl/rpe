@@ -62,10 +62,11 @@ logging.info("✅ 图片模型 warmup 完成")
 
 # ✅ 核心处理函数
 def handler(job):
-    logging.info(f"📥 接收到任务: {job}")
+    logging.info(f"📥 任务输入内容:\n{job}\n📄 类型: {type(job)}")
     try:
         model_type = job["input"].get("model", "text")
         inputs = job["input"].get("data")
+        logging.info(f"📋 inputs内容是: {inputs} (类型: {type(inputs)}, 长度: {len(inputs) if inputs else 0})")
         if isinstance(inputs, str):
             inputs = [inputs]
 
