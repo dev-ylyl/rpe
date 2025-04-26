@@ -91,8 +91,8 @@ def handler(job):
             tokenizer_time = time.time()
             logging.info(f"⏱️ Tokenizer耗时: {tokenizer_time - start_time:.3f}s")
 
-            # 传送到cuda并转为半精度
-            encoded = {k: v.cuda().half() for k, v in encoded.items()}
+            # 传送到cuda并转为半精度，仅非input_ids键
+            encoded = {k: (v.cuda().half() if k != "input_ids" else v.cuda()) for k, v in encoded.items()}
             to_cuda_time = time.time()
             logging.info(f"⏱️ To CUDA耗时: {to_cuda_time - tokenizer_time:.3f}s")
 

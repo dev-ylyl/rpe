@@ -20,7 +20,7 @@ RUN python3.11 -m pip install --upgrade pip && \
 
 # ✅ 下载 rembg ONNX 模型（提前缓存，避免冷启动时联网）
 RUN mkdir -p /runpod-volume/rembg && \
-    wget -O /runpod-volume/rembg/u2net.onnx https://huggingface.co/tomjackson2023/rembg/resolve/main/u2net.onnx
+    wget -O /runpod-volume/rembg/u2netp.onnx https://github.com/danielgatis/rembg/releases/download/v0.0.0/u2netp.onnx
 
 # ✅ 构建时预加载模型（使用多进程）
 COPY scripts/preload_models.py /app/scripts/preload_models.py
