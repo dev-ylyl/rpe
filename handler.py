@@ -10,30 +10,26 @@ import logging
 logging.basicConfig(level=logging.INFO)
 
 tokenizer = AutoTokenizer.from_pretrained(
-    "BAAI/bge-large-zh-v1.5",
+    "/runpod-volume/hub/models--BAAI--bge-large-zh-v1.5",
     trust_remote_code=True,
-    cache_dir="/runpod-volume/hub",
     local_files_only=True
 )
 
 text_model = AutoModel.from_pretrained(
-    "BAAI/bge-large-zh-v1.5",
+    "/runpod-volume/hub/models--BAAI--bge-large-zh-v1.5",
     trust_remote_code=True,
-    cache_dir="/runpod-volume/hub",
     local_files_only=True
 ).cuda().eval()
 
 image_model = AutoModel.from_pretrained(
-    "Marqo/marqo-fashionCLIP",
+    "/runpod-volume/hub/models--Marqo--marqo-fashionCLIP",
     trust_remote_code=True,
-    cache_dir="/runpod-volume/hub",
     local_files_only=True
 ).cuda().eval()
 
 image_processor = AutoProcessor.from_pretrained(
-    "Marqo/marqo-fashionCLIP",
+    "/runpod-volume/hub/models--Marqo--marqo-fashionCLIP",
     trust_remote_code=True,
-    cache_dir="/runpod-volume/hub",
     local_files_only=True
 )
 rembg_session = new_session("isnet-general-use")
