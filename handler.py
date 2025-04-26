@@ -1,5 +1,4 @@
 import runpod
-from rp_response import runpod_response
 from transformers import AutoTokenizer, AutoModel, AutoProcessor
 from rembg import remove, new_session
 from PIL import Image
@@ -8,6 +7,7 @@ import base64
 import io
 import logging
 import traceback
+import time
 
 # 配置日志
 logging.basicConfig(
@@ -26,13 +26,13 @@ text_model = AutoModel.from_pretrained(
     "/runpod-volume/hub/models--BAAI--bge-large-zh-v1.5",
     trust_remote_code=True,
     local_files_only=True
-).cuda().eval()
+).cuda().half().eval()
 
 image_model = AutoModel.from_pretrained(
     "/runpod-volume/hub/models--Marqo--marqo-fashionCLIP",
     trust_remote_code=True,
     local_files_only=True
-).cuda().eval()
+).cuda().half().eval()
 
 image_processor = AutoProcessor.from_pretrained(
     "/runpod-volume/hub/models--Marqo--marqo-fashionCLIP",
@@ -40,81 +40,128 @@ image_processor = AutoProcessor.from_pretrained(
     local_files_only=True
 )
 
-rembg_session = new_session("isnet-general-use")
+rembg_session = new_session("u2netp")
+
+# 打印当前GPU信息
+logging.info(f"🚀 当前使用GPU: {torch.cuda.get_device_name(0)}")
+
+# CUDA 预热 - text_model
+with torch.no_grad():
+    dummy_inputs = tokenizer(["warmup"], padding=True, return_tensors="pt", truncation=True)
+    dummy_inputs = {k: v.cuda().half() for k, v in dummy_inputs.items()}
+    _ = text_model(**dummy_inputs).last_hidden_state.mean(dim=1)
+logging.info("✅ 文本模型 warmup 完成")
+
+# CUDA 预热 - image_model
+with torch.no_grad():
+    dummy_image = Image.new('RGB', (224, 224), color=(255, 255, 255))  # 创建一张白图
+    processed = image_processor(images=dummy_image, return_tensors="pt")
+    processed = {k: v.cuda().half() for k, v in processed.items()}
+    _ = image_model.get_image_features(**processed, normalize=True)
+logging.info("✅ 图片模型 warmup 完成")
 
 # ✅ 核心处理函数
 def handler(job):
     logging.info(f"📥 接收到任务: {job}")
     try:
-        openai_input = job["input"].get("openai_input", {})
-        model_type = openai_input.get("model", "text-embedding")
-        inputs = openai_input.get("input")
+        model_type = job["input"].get("model", "text")
+        inputs = job["input"].get("data")
         if isinstance(inputs, str):
             inputs = [inputs]
 
         if not inputs:
-            logging.warning("⚠️ 输入为空")
-            return runpod_response(
-                status_code=400,
-                content_type="application/json",
-                body={"error": "Empty input provided.", "model": model_type}
-            )
+            logging.warning("⚠️ 数据为空")
+            return {
+                "output": {
+                    "error": "Empty input provided."
+                }
+            }
 
         results = []
 
-        if model_type == "text-embedding":
+        if model_type == "text":
             logging.info(f"🔠 文本嵌入处理，数量: {len(inputs)}")
-            encoded = tokenizer(text=inputs, return_tensors="pt", padding=True, truncation=True).to("cuda")
+            start_time = time.time()
+
+            # Tokenizer阶段
+            encoded = tokenizer(inputs, padding=True, return_tensors="pt", truncation=True)
+            logging.info(f"🧩 Tokenizer输出 keys: {list(encoded.keys())}")
+
+            tokenizer_time = time.time()
+            logging.info(f"⏱️ Tokenizer耗时: {tokenizer_time - start_time:.3f}s")
+
+            # 传送到cuda并转为半精度
+            encoded = {k: v.cuda().half() for k, v in encoded.items()}
+            to_cuda_time = time.time()
+            logging.info(f"⏱️ To CUDA耗时: {to_cuda_time - tokenizer_time:.3f}s")
+
+            # 推理阶段
             with torch.no_grad():
                 output = text_model(**encoded).last_hidden_state.mean(dim=1).cpu().tolist()
-            for i, emb in enumerate(output):
-                results.append({
-                    "object": "embedding",
-                    "index": i,
-                    "embedding": emb
-                })
 
-        elif model_type == "image-embedding":
+            inference_time = time.time()
+            logging.info(f"⏱️ 推理耗时: {inference_time - to_cuda_time:.3f}s")
+
+            for emb in output:
+                results.append(emb)
+
+            total_time = time.time()
+            logging.info(f"✅ 总处理时间: {total_time - start_time:.3f}s")
+
+        elif model_type == "image":
             logging.info(f"🖼️ 图像嵌入处理，数量: {len(inputs)}")
+            start_time = time.time()
+
+            images = []
             for i, img_str in enumerate(inputs):
+                img_start_time = time.time()
                 if img_str.startswith("data:image/"):
                     img_str = img_str.split(",")[1]
                 image = Image.open(io.BytesIO(base64.b64decode(img_str)))
-                image = remove(image, session=rembg_session).convert("RGB")
-                processed = image_processor(images=image, return_tensors="pt").to("cuda")
-                with torch.no_grad():
-                    vector = image_model.get_image_features(**processed, normalize=True).squeeze().cpu().tolist()
-                results.append({
-                    "object": "embedding",
-                    "index": i,
-                    "embedding": vector
-                })
+                decode_time = time.time()
+                logging.info(f"🖼️ 解码第{i}张图片耗时: {decode_time - img_start_time:.3f}s")
 
-        return runpod_response(
-            status_code=200,
-            content_type="application/json",
-            body={
-                "object": "list",
-                "data": results,
-                "model": model_type,
-                "usage": {
-                    "prompt_tokens": len(inputs),
-                    "total_tokens": len(inputs)
-                }
+                image = remove(image, session=rembg_session).convert("RGB")
+                rembg_time = time.time()
+                logging.info(f"🧹 去背景第{i}张图片耗时: {rembg_time - decode_time:.3f}s")
+
+                images.append(image)
+
+            # 批量处理
+            processed = image_processor(images=images, return_tensors="pt")
+            processor_time = time.time()
+            logging.info(f"🎛️ 图片批处理耗时: {processor_time - rembg_time:.3f}s")
+
+            processed = {k: v.cuda().half() for k, v in processed.items()}
+
+            with torch.no_grad():
+                vectors = image_model.get_image_features(**processed, normalize=True).cpu().tolist()
+
+            inference_time = time.time()
+            logging.info(f"⏱️ 图片推理耗时: {inference_time - processor_time:.3f}s")
+
+            for vector in vectors:
+                results.append(vector)
+
+            total_time = time.time()
+            logging.info(f"✅ 总图片处理时间: {total_time - start_time:.3f}s")
+
+        logging.info(f"✅ 返回数据结构: {results}")
+        return {
+            "output": {
+                "embeddings": results
             }
-        )
+        }
 
     except Exception as e:
         logging.error(f"❌ 出现异常: {str(e)}")
         traceback.print_exc()
-        return runpod_response(
-            status_code=500,
-            content_type="application/json",
-            body={
+        return {
+            "output": {
                 "error": str(e),
                 "trace": traceback.format_exc()
             }
-        )
+        }
 
 # ✅ 启动 Serverless Worker
 logging.info("🟢 Worker 已启动，等待任务中...")
