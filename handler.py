@@ -154,7 +154,7 @@ def handler(job):
             total_time = time.time()
             logging.info(f"✅ 总图片处理时间: {total_time - start_time:.3f}s")
 
-        logging.info(f"✅ 返回数据结构: {results}")
+        logging.info(f"✅ 推理完成，共生成 {len(results)} 个embedding，每个embedding维度: {len(results[0])}")
         return {
             "output": {
                 "embeddings": results
