@@ -1,4 +1,5 @@
 import runpod
+from runpod.serverless.modules.rp_response import runpod_response
 from transformers import AutoTokenizer, AutoModel, AutoProcessor
 from rembg import remove, new_session
 from PIL import Image
@@ -8,36 +9,33 @@ import logging
 
 logging.basicConfig(level=logging.INFO)
 
-from huggingface_hub import snapshot_download
-import os
+tokenizer = AutoTokenizer.from_pretrained(
+    "BAAI/bge-large-zh-v1.5",
+    trust_remote_code=True,
+    cache_dir="/runpod-volume/hub",
+    local_files_only=True
+)
 
-try:
-    tokenizer_snapshot = snapshot_download("BAAI/bge-large-zh-v1.5", cache_dir="/runpod-volume/hub", local_files_only=True)
-    logging.info(f"✅ tokenizer 缓存命中路径: {tokenizer_snapshot}")
-except Exception:
-    logging.warning("⚠️ tokenizer 未命中缓存，将使用在线加载（可能触发网络请求）")
-tokenizer = AutoTokenizer.from_pretrained("BAAI/bge-large-zh-v1.5", trust_remote_code=True, cache_dir="/runpod-volume/hub")
+text_model = AutoModel.from_pretrained(
+    "BAAI/bge-large-zh-v1.5",
+    trust_remote_code=True,
+    cache_dir="/runpod-volume/hub",
+    local_files_only=True
+).cuda().eval()
 
-try:
-    text_model_snapshot = snapshot_download("BAAI/bge-large-zh-v1.5", cache_dir="/runpod-volume/hub", local_files_only=True)
-    logging.info(f"✅ text_model 缓存命中路径: {text_model_snapshot}")
-except Exception:
-    logging.warning("⚠️ text_model 未命中缓存，将使用在线加载（可能触发网络请求）")
-text_model = AutoModel.from_pretrained("BAAI/bge-large-zh-v1.5", trust_remote_code=True, cache_dir="/runpod-volume/hub").cuda().eval()
+image_model = AutoModel.from_pretrained(
+    "Marqo/marqo-fashionCLIP",
+    trust_remote_code=True,
+    cache_dir="/runpod-volume/hub",
+    local_files_only=True
+).cuda().eval()
 
-try:
-    image_model_snapshot = snapshot_download("Marqo/marqo-fashionCLIP", cache_dir="/runpod-volume/hub", local_files_only=True)
-    logging.info(f"✅ image_model 缓存命中路径: {image_model_snapshot}")
-except Exception:
-    logging.warning("⚠️ image_model 未命中缓存，将使用在线加载（可能触发网络请求）")
-image_model = AutoModel.from_pretrained("Marqo/marqo-fashionCLIP", trust_remote_code=True, cache_dir="/runpod-volume/hub").cuda().eval()
-
-try:
-    image_processor_snapshot = snapshot_download("Marqo/marqo-fashionCLIP", cache_dir="/runpod-volume/hub", local_files_only=True)
-    logging.info(f"✅ image_processor 缓存命中路径: {image_processor_snapshot}")
-except Exception:
-    logging.warning("⚠️ image_processor 未命中缓存，将使用在线加载（可能触发网络请求）")
-image_processor = AutoProcessor.from_pretrained("Marqo/marqo-fashionCLIP", trust_remote_code=True, cache_dir="/runpod-volume/hub")
+image_processor = AutoProcessor.from_pretrained(
+    "Marqo/marqo-fashionCLIP",
+    trust_remote_code=True,
+    cache_dir="/runpod-volume/hub",
+    local_files_only=True
+)
 rembg_session = new_session("isnet-general-use")
 
 import traceback
@@ -101,15 +99,23 @@ def handler(job):
         }
         logging.info(f"✅ 返回结果: {result}")
         logging.info("🚀 任务处理完成，无异常抛出，正常返回结果。")
-        return result
+        return runpod_response(
+            status_code=200,
+            content_type="application/json; charset=utf-8",
+            body=result
+        )
 
     except Exception as e:
         logging.error(f"❌ 出现异常: {str(e)}")
         traceback.print_exc()
-        return {
-            "error": str(e),
-            "trace": traceback.format_exc()
-        }
+        return runpod_response(
+            status_code=500,
+            content_type="application/json; charset=utf-8",
+            body={
+                "error": str(e),
+                "trace": traceback.format_exc()
+            }
+        )
 
 logging.info("🟢 Worker 已启动，等待任务中...")
 runpod.serverless.start({"handler": handler})
