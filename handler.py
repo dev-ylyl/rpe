@@ -48,7 +48,7 @@ logging.info(f"🚀 当前使用GPU: {torch.cuda.get_device_name(0)}")
 # CUDA 预热 - text_model
 with torch.no_grad():
     dummy_inputs = tokenizer(["warmup"], padding=True, return_tensors="pt", truncation=True)
-    dummy_inputs = {k: v.cuda().half() for k, v in dummy_inputs.items()}
+    dummy_inputs = {k: (v.cuda().half() if k != "input_ids" else v.cuda()) for k, v in dummy_inputs.items()}
     _ = text_model(**dummy_inputs).last_hidden_state.mean(dim=1)
 logging.info("✅ 文本模型 warmup 完成")
 
@@ -129,7 +129,19 @@ def handler(job):
                 images.append(image)
 
             # 批量处理
-            processed = image_processor(images=images, return_tensors="pt")
+            try:
+                processed = image_processor(images=images, return_tensors="pt")
+            except Exception as e:
+                logging.error(f"❌ 图片处理出错: {str(e)}")
+                traceback.print_exc()
+                torch.cuda.empty_cache()
+                return {
+                    "output": {
+                        "error": f"Image processing error: {str(e)}",
+                        "trace": traceback.format_exc()
+                    }
+                }
+
             processor_time = time.time()
             logging.info(f"🎛️ 图片批处理耗时: {processor_time - rembg_time:.3f}s")
 
@@ -157,6 +169,7 @@ def handler(job):
     except Exception as e:
         logging.error(f"❌ 出现异常: {str(e)}")
         traceback.print_exc()
+        torch.cuda.empty_cache()
         return {
             "output": {
                 "error": str(e),
