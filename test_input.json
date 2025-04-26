@@ -1,8 +1,6 @@
 {
   "input": {
-    "model": "image",
-    "data": [
-      "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAUAAAAFCAYAAACNbyblAAAAHElEQVQI12P4//8/w38GIAXDIBKE0DHxgljNBAAO9TXL0Y4OHwAAAABJRU5ErkJggg=="
-    ]
+    "model": "text",
+    "data": "今天天气真好，适合出门散步。"
   }
 }
