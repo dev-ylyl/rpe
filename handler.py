@@ -40,6 +40,9 @@ image_processor = AutoProcessor.from_pretrained(
     local_files_only=True
 )
 
+print(f"image_processor 类型: {type(image_processor)}")
+print(f"image_processor.config: {getattr(image_processor, 'config', None)}")
+
 rembg_session = new_session("u2netp")
 
 # 打印当前GPU信息
