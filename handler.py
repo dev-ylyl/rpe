@@ -26,11 +26,13 @@ tokenizer = AutoTokenizer.from_pretrained(
 text_model = AutoModel.from_pretrained(
     "/runpod-volume/hub/models--BAAI--bge-large-zh-v1.5",
     trust_remote_code=True,
-    local_files_only=True
+    local_files_only=True,
+    torch_dtype=torch.float16
 ).cuda().eval()
 
 image_model, preprocess_train, preprocess_val = open_clip.create_model_and_transforms(
-    'hf-hub:Marqo/marqo-fashionCLIP'
+    'hf-hub:Marqo/marqo-fashionCLIP',
+    precision="fp16"
 )
 image_model = image_model.cuda().eval()
 image_processor = preprocess_val
@@ -44,14 +46,14 @@ rembg_session = new_session("u2netp")
 logging.info(f"🚀 当前使用GPU: {torch.cuda.get_device_name(0)}")
 
 # CUDA 预热 - text_model
-with torch.no_grad():
+with torch.no_grad(), torch.cuda.amp.autocast():
     dummy_inputs = tokenizer(["warmup"], padding=True, return_tensors="pt", truncation=True)
     dummy_inputs = {k: v.cuda() for k, v in dummy_inputs.items()}
     _ = text_model(**dummy_inputs).last_hidden_state.mean(dim=1)
 logging.info("✅ 文本模型 warmup 完成")
 
 # CUDA 预热 - image_model
-with torch.no_grad():
+with torch.no_grad(), torch.cuda.amp.autocast():
     dummy_image = Image.new('RGB', (224, 224), color=(255, 255, 255))  # 创建一张白图
     tensor_image = image_processor(dummy_image).unsqueeze(0).cuda()
     _ = image_model.encode_image(tensor_image, normalize=True)
@@ -94,7 +96,7 @@ def handler(job):
             logging.info(f"⏱️ To CUDA耗时: {to_cuda_time - tokenizer_time:.3f}s")
 
             # 推理阶段
-            with torch.no_grad():
+            with torch.no_grad(), torch.cuda.amp.autocast():
                 output = text_model(**encoded).last_hidden_state.mean(dim=1).cpu().tolist()
 
             inference_time = time.time()
@@ -142,7 +144,7 @@ def handler(job):
             processor_time = time.time()
             logging.info(f"🎛️ 图片批处理耗时: {processor_time - rembg_time:.3f}s")
 
-            with torch.no_grad():
+            with torch.no_grad(), torch.cuda.amp.autocast():
                 vectors = image_model.encode_image(processed_images, normalize=True).cpu().tolist()
 
             inference_time = time.time()
