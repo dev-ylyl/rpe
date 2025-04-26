@@ -26,13 +26,13 @@ text_model = AutoModel.from_pretrained(
     "/runpod-volume/hub/models--BAAI--bge-large-zh-v1.5",
     trust_remote_code=True,
     local_files_only=True
-).cuda().half().eval()
+).cuda().eval()
 
 image_model = AutoModel.from_pretrained(
     "/runpod-volume/hub/models--Marqo--marqo-fashionCLIP",
     trust_remote_code=True,
     local_files_only=True
-).cuda().half().eval()
+).cuda().eval()
 
 image_processor = AutoProcessor.from_pretrained(
     "/runpod-volume/hub/models--Marqo--marqo-fashionCLIP",
@@ -48,7 +48,7 @@ logging.info(f"🚀 当前使用GPU: {torch.cuda.get_device_name(0)}")
 # CUDA 预热 - text_model
 with torch.no_grad():
     dummy_inputs = tokenizer(["warmup"], padding=True, return_tensors="pt", truncation=True)
-    dummy_inputs = {k: (v.cuda().half() if k != "input_ids" else v.cuda()) for k, v in dummy_inputs.items()}
+    dummy_inputs = {k: v.cuda() for k, v in dummy_inputs.items()}
     _ = text_model(**dummy_inputs).last_hidden_state.mean(dim=1)
 logging.info("✅ 文本模型 warmup 完成")
 
@@ -56,7 +56,7 @@ logging.info("✅ 文本模型 warmup 完成")
 with torch.no_grad():
     dummy_image = Image.new('RGB', (224, 224), color=(255, 255, 255))  # 创建一张白图
     processed = image_processor(images=dummy_image, return_tensors="pt")
-    processed = {k: v.cuda().half() for k, v in processed.items()}
+    processed = {k: v.cuda() for k, v in processed.items()}
     _ = image_model.get_image_features(**processed, normalize=True)
 logging.info("✅ 图片模型 warmup 完成")
 
@@ -91,8 +91,8 @@ def handler(job):
             tokenizer_time = time.time()
             logging.info(f"⏱️ Tokenizer耗时: {tokenizer_time - start_time:.3f}s")
 
-            # 传送到cuda并转为半精度，仅非input_ids键
-            encoded = {k: (v.cuda().half() if k != "input_ids" else v.cuda()) for k, v in encoded.items()}
+            # 传送到cuda，仅移动，不转半精度
+            encoded = {k: v.cuda() for k, v in encoded.items()}
             to_cuda_time = time.time()
             logging.info(f"⏱️ To CUDA耗时: {to_cuda_time - tokenizer_time:.3f}s")
 
@@ -145,7 +145,7 @@ def handler(job):
             processor_time = time.time()
             logging.info(f"🎛️ 图片批处理耗时: {processor_time - rembg_time:.3f}s")
 
-            processed = {k: v.cuda().half() for k, v in processed.items()}
+            processed = {k: v.cuda() for k, v in processed.items()}
 
             with torch.no_grad():
                 vectors = image_model.get_image_features(**processed, normalize=True).cpu().tolist()
