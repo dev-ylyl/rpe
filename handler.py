@@ -1,5 +1,5 @@
 import runpod
-from runpod.serverless.modules.rp_response import runpod_response
+from rp_response import runpod_response
 from transformers import AutoTokenizer, AutoModel, AutoProcessor
 from rembg import remove, new_session
 from PIL import Image
